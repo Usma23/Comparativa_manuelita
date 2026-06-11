@@ -158,7 +158,7 @@
 
         async function loadGeoData() {
             try {
-                const resL = await fetch(`/poligonos/${fincaId}`);
+                const resL = await fetch(`/poligonos/${fincaId}?persona_id=${personaId}&fecha=${fecha}`);
                 const poligonos = await resL.json();
                 poligonos.forEach(p => {
                     const poly = L.polygon(p.puntos, {
@@ -167,7 +167,7 @@
                     layerLotes.addLayer(poly);
                 });
 
-                const resS = await fetch(`/spots/${fincaId}`);
+                const resS = await fetch(`/spots/${fincaId}?persona_id=${personaId}&fecha=${fecha}`);
                 const spots = await resS.json();
                 spots.forEach(s => {
                     const spot = L.circleMarker([s.lat, s.lng], {

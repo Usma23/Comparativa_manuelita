@@ -70,6 +70,104 @@ class AgenteComparativa:
             r['lng'] = float(r['lng'])
         return rows
 
+    def obtener_lotes_activos_persona(self, finca_id, persona_id, fecha):
+        if not persona_id or not fecha:
+            return None
+            
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        
+        lote_ids = set()
+        
+        # 1. Buscar en cierre_area_labor_dia_personas
+        query_cierre = """
+            SELECT DISTINCT lote_id FROM cierre_area_labor_dia_personas 
+            WHERE finca_id = %s AND persona_id = %s AND fecha = %s
+        """
+        try:
+            cursor.execute(query_cierre, (finca_id, persona_id, fecha))
+            for r in cursor.fetchall():
+                if r[0]: lote_ids.add(int(r[0]))
+        except Exception as e:
+            print(f"Error query lotes cierre: {e}")
+            
+        # 2. Buscar en las tablas de labores
+        tablas_labores = [
+            'l_pal_artils', 'l_pal_artlis', 'l_pal_asisms', 'l_pal_antess', 'l_pal_artifs', 'l_pal_polins'
+        ]
+        for t in tablas_labores:
+            try:
+                query_labor = f"""
+                    SELECT DISTINCT lote_id FROM {t}
+                    WHERE finca_id = %s AND persona_id = %s AND fecha BETWEEN %s AND %s
+                """
+                cursor.execute(query_labor, (finca_id, persona_id, f"{fecha} 00:00:00", f"{fecha} 23:59:59"))
+                for r in cursor.fetchall():
+                    if r[0]: lote_ids.add(int(r[0]))
+            except:
+                pass
+                
+        conn.close()
+        return list(lote_ids)
+
+    def obtener_poligonos_filtrados(self, finca_id, persona_id=None, fecha=None):
+        lote_ids = self.obtener_lotes_activos_persona(finca_id, persona_id, fecha)
+        
+        conn = self.get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        if lote_ids is not None:
+            if not lote_ids: 
+                conn.close()
+                return []
+            lote_ids_str = ",".join([str(lid) for lid in lote_ids])
+            cursor.execute(f"SELECT lote_id, nombre FROM lotes WHERE finca_id = %s AND lote_id IN ({lote_ids_str})", (finca_id,))
+        else:
+            cursor.execute("SELECT lote_id, nombre FROM lotes WHERE finca_id = %s", (finca_id,))
+            
+        lotes = {row['lote_id']: row['nombre'] for row in cursor.fetchall()}
+        
+        if not lotes:
+            conn.close()
+            return []
+            
+        lote_ids_keys = tuple(lotes.keys())
+        query = f"SELECT lote_id, lat, lng FROM puntos_lotes WHERE lote_id IN ({','.join(['%s']*len(lote_ids_keys))}) ORDER BY lote_id, punto_lote_id"
+        cursor.execute(query, lote_ids_keys)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        poligonos = {}
+        for row in rows:
+            lid = row['lote_id']
+            if lid not in poligonos:
+                poligonos[lid] = {'nombre': lotes[lid], 'puntos': []}
+            poligonos[lid]['puntos'].append([float(row['lat']), float(row['lng'])])
+            
+        return list(poligonos.values())
+
+    def obtener_spots_filtrados(self, finca_id, persona_id=None, fecha=None):
+        lote_ids = self.obtener_lotes_activos_persona(finca_id, persona_id, fecha)
+        
+        conn = self.get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        if lote_ids is not None:
+            if not lote_ids:
+                conn.close()
+                return []
+            lote_ids_str = ",".join([str(lid) for lid in lote_ids])
+            cursor.execute(f"SELECT linea, lat, lng FROM spots WHERE finca_id = %s AND lote_id IN ({lote_ids_str})", (finca_id,))
+        else:
+            cursor.execute("SELECT linea, lat, lng FROM spots WHERE finca_id = %s", (finca_id,))
+            
+        rows = cursor.fetchall()
+        conn.close()
+        for r in rows:
+            r['lat'] = float(r['lat'])
+            r['lng'] = float(r['lng'])
+        return rows
+
     def obtener_coordenadas(self, finca_id, persona_id, fecha):
         conn = self.get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -472,11 +570,15 @@ def detalle(finca_id, persona_id, fecha):
 
 @app.route('/poligonos/<int:finca_id>')
 def poligonos(finca_id):
-    return jsonify(agente.obtener_poligonos(finca_id))
+    persona_id = request.args.get('persona_id', type=int)
+    fecha = request.args.get('fecha')
+    return jsonify(agente.obtener_poligonos_filtrados(finca_id, persona_id, fecha))
 
 @app.route('/spots/<int:finca_id>')
 def spots(finca_id):
-    return jsonify(agente.obtener_spots_finca(finca_id))
+    persona_id = request.args.get('persona_id', type=int)
+    fecha = request.args.get('fecha')
+    return jsonify(agente.obtener_spots_filtrados(finca_id, persona_id, fecha))
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
