@@ -304,15 +304,6 @@ class AgenteComparativa:
         resultados = []
         
         for row in rows:
-            # Validar cumplimiento del área recorrida si está disponible
-            area_recorrida = row.get('area_recorrida')
-            area_total = row.get('area_total')
-            if area_recorrida is not None and area_total is not None and float(area_total) > 0:
-                porcentaje = float(area_recorrida) / float(area_total)
-                if porcentaje < config['cumplimiento']:
-                    # No cumple con el área mínima recorrida, se ignora en el análisis
-                    continue
-
             tajos_str = row['tajos']
             if not tajos_str: continue
             try:
@@ -390,18 +381,7 @@ class AgenteComparativa:
             ]
         df_base = self.obtener_datos_gps_generico(finca_id, desde, hasta, tablas_labores)
         if df_base.empty: return pd.DataFrame()
-        config = self.obtener_config_finca(finca_id)
-        resultados = []
-        for (p_id, l_id, lab_id, fecha_str), group in df_base.groupby(['persona_id', 'lote_id', 'labor_id', 'DATA_STR']):
-            lines = group['linea'].dropna().unique()
-            rangos = self.calcular_rangos(lines, salto_permitido=config['salto'])
-            for ri, rf in rangos:
-                resultados.append({
-                    'persona_id': p_id, 'FUNC': group['FUNC'].iloc[0], 'PERSONA': group['PERSONA'].iloc[0],
-                    'lote_id': l_id, 'LOTE': group['LOTE'].iloc[0], 'labor_id': lab_id,
-                    'fecha': fecha_str, 'mapa_linea_i': ri, 'mapa_linea_f': rf
-                })
-        return pd.DataFrame(resultados)
+        return self._procesar_datos_por_config(finca_id, df_base, 'mapa')
 
     def generar_comparativa(self, finca_id, desde, hasta, version='v545'):
         if version == 'v715':
