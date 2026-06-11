@@ -121,12 +121,16 @@
             <option value="street">Calles</option>
         </select>
 
-        <label style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px; display: block;">Elementos
-            Finca:</label>
-        <div style="font-size: 0.8rem;">
+        <label style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px; display: block;">Elementos Finca:</label>
+        <div style="font-size: 0.8rem; margin-bottom: 10px;">
             <input type="checkbox" id="chk-lotes" checked onchange="toggleLotes(this.checked)"> Lotes (Polígonos)<br>
-            <input type="checkbox" id="chk-spots" onchange="toggleSpots(this.checked)"> Spots (Líneas)<br>
+            <input type="checkbox" id="chk-spots" onchange="toggleSpots(this.checked)"> Spots (Palmas)<br>
             <input type="checkbox" id="chk-spot-lines" onchange="toggleSpotLines(this.checked)"> Líneas por Fila<br>
+        </div>
+
+        <label style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px; display: block;">Labores Operario:</label>
+        <div id="labores-controls" style="font-size: 0.8rem; max-height: 120px; overflow-y: auto; padding-right: 5px;">
+            <span style="color: #64748b; font-style: italic;">Cargando labores...</span>
         </div>
     </div>
 
@@ -137,6 +141,7 @@
         let layerLotes = L.layerGroup();
         let layerSpots = L.layerGroup();
         let layerSpotLines = L.layerGroup();
+        let laborLayers = {};
 
         const layers = {
             street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -148,6 +153,19 @@
                 maxNativeZoom: 20
             })
         };
+
+        const laborColors = {
+            1886: '#f59e0b', // Amber (Antesis A)
+            1887: '#ef4444', // Red (Quemada)
+            1884: '#3b82f6', // Blue (ANA 1)
+            1885: '#10b981', // Green (ANA 2)
+            1894: '#a855f7', // Purple (Palma)
+        };
+
+        function getLaborColor(id) {
+            const colors = ['#f59e0b', '#ef4444', '#3b82f6', '#10b981', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
+            return laborColors[id] || colors[id % colors.length];
+        }
 
         const fincaId = "{{ finca_id }}";
         const personaId = "{{ persona_id }}";
@@ -164,6 +182,14 @@
         function toggleLotes(visible) { if (visible) layerLotes.addTo(map); else map.removeLayer(layerLotes); }
         function toggleSpots(visible) { if (visible) layerSpots.addTo(map); else map.removeLayer(layerSpots); }
         function toggleSpotLines(visible) { if (visible) layerSpotLines.addTo(map); else map.removeLayer(layerSpotLines); }
+        
+        function toggleLaborLayer(tid, visible) {
+            const layer = laborLayers[tid];
+            if (layer) {
+                if (visible) layer.addTo(map);
+                else map.removeLayer(layer);
+            }
+        }
 
         async function loadGeoData() {
             try {
@@ -182,10 +208,31 @@
                 // Agrupar spots por lote y línea
                 const groups = {};
                 spots.forEach(s => {
-                    const spot = L.circleMarker([s.lat, s.lng], {
-                        radius: 2, color: 'yellow', weight: 1, fillOpacity: 0.8
-                    }).bindTooltip(`Línea: ${s.linea}`, { sticky: true });
-                    layerSpots.addLayer(spot);
+                    let spotElement;
+                    let polyPoints = [];
+                    if (s.poligono) {
+                        try {
+                            const polyObj = typeof s.poligono === 'string' ? JSON.parse(s.poligono) : s.poligono;
+                            if (Array.isArray(polyObj)) {
+                                polyPoints = polyObj.map(pt => [pt.latitude || pt.lat, pt.longitude || pt.lng]);
+                            }
+                        } catch (e) { console.error("Error parse spot polygon:", e); }
+                    }
+
+                    if (polyPoints.length >= 3) {
+                        spotElement = L.polygon(polyPoints, {
+                            color: 'yellow',
+                            weight: 1.5,
+                            fillColor: 'yellow',
+                            fillOpacity: 0.3
+                        });
+                    } else {
+                        spotElement = L.circleMarker([s.lat, s.lng], {
+                            radius: 2, color: 'yellow', weight: 1, fillOpacity: 0.8
+                        });
+                    }
+                    spotElement.bindTooltip(`Línea: ${s.linea}`, { sticky: true });
+                    layerSpots.addLayer(spotElement);
 
                     // Agrupación para líneas por fila
                     const key = `${s.lote_id}_${s.linea}`;
@@ -209,8 +256,75 @@
                             dashArray: '5, 5'
                         }).bindTooltip(`Fila: ${groupSpots[0].linea}`, { sticky: true });
                         layerSpotLines.addLayer(rowLine);
+
+                        // Agregar el número de la línea al principio con prefijo L
+                        const labelIcon = L.divIcon({
+                            className: 'line-number-label',
+                            html: `<div style="color: #38bdf8; font-weight: bold; font-size: 0.85rem; text-shadow: 1px 1px 2px black;">L${groupSpots[0].linea}</div>`,
+                            iconSize: [40, 15],
+                            iconAnchor: [20, 7]
+                        });
+                        const labelMarker = L.marker(latlngs[0], { icon: labelIcon, interactive: false });
+                        layerSpotLines.addLayer(labelMarker);
                     }
                 }
+
+                // Cargar puntos de labores de cada operario
+                const resLpts = await fetch(`/puntos_labores/${fincaId}/${personaId}/${fecha}`);
+                const lpts = await resLpts.json();
+                
+                // Agrupar por tipo_labor_id
+                const lptsGrouped = {};
+                lpts.forEach(pt => {
+                    const tid = pt.tipo_labor_id;
+                    if (!lptsGrouped[tid]) {
+                        lptsGrouped[tid] = {
+                            name: pt.labor_nombre,
+                            points: []
+                        };
+                    }
+                    lptsGrouped[tid].points.push(pt);
+                });
+
+                // Crear los LayerGroups y agregar los checkboxes al panel
+                const controlsContainer = document.getElementById('labores-controls');
+                controlsContainer.innerHTML = '';
+                
+                if (Object.keys(lptsGrouped).length === 0) {
+                    controlsContainer.innerHTML = '<span style="color: #64748b; font-style: italic;">No hay labores registradas</span>';
+                }
+
+                for (const tid in lptsGrouped) {
+                    const group = lptsGrouped[tid];
+                    const lLayer = L.layerGroup();
+                    laborLayers[tid] = lLayer;
+                    
+                    // Agregar markers
+                    group.points.forEach(pt => {
+                        const marker = L.circleMarker([pt.lat, pt.lng], {
+                            radius: 4,
+                            color: '#ffffff',
+                            weight: 1,
+                            fillColor: getLaborColor(tid),
+                            fillOpacity: 0.9
+                        }).bindTooltip(`<b>${pt.labor_nombre}</b><br>Hora: ${pt.fecha.split(' ')[1]}`, { sticky: true });
+                        lLayer.addLayer(marker);
+                    });
+
+                    // Por defecto, agregar al mapa
+                    lLayer.addTo(map);
+
+                    // Agregar control de filtro en HTML
+                    const labelDiv = document.createElement('div');
+                    labelDiv.style.marginBottom = '4px';
+                    labelDiv.innerHTML = `
+                        <input type="checkbox" checked onchange="toggleLaborLayer('${tid}', this.checked)">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${getLaborColor(tid)}; margin-right: 4px; border: 1px solid white;"></span>
+                        ${group.name} (${group.points.length})
+                    `;
+                    controlsContainer.appendChild(labelDiv);
+                }
+
             } catch (e) { console.error("Error geo-data:", e); }
         }
 

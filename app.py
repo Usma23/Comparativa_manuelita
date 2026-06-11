@@ -157,9 +157,9 @@ class AgenteComparativa:
                 conn.close()
                 return []
             lote_ids_str = ",".join([str(lid) for lid in lote_ids])
-            cursor.execute(f"SELECT lote_id, linea, lat, lng, posicion FROM spots WHERE finca_id = %s AND lote_id IN ({lote_ids_str}) ORDER BY lote_id, linea, posicion", (finca_id,))
+            cursor.execute(f"SELECT lote_id, linea, lat, lng, posicion, poligono FROM spots WHERE finca_id = %s AND lote_id IN ({lote_ids_str}) ORDER BY lote_id, linea, posicion", (finca_id,))
         else:
-            cursor.execute("SELECT lote_id, linea, lat, lng, posicion FROM spots WHERE finca_id = %s ORDER BY lote_id, linea, posicion", (finca_id,))
+            cursor.execute("SELECT lote_id, linea, lat, lng, posicion, poligono FROM spots WHERE finca_id = %s ORDER BY lote_id, linea, posicion", (finca_id,))
             
         rows = cursor.fetchall()
         conn.close()
@@ -167,6 +167,14 @@ class AgenteComparativa:
             r['lat'] = float(r['lat'])
             r['lng'] = float(r['lng'])
             r['posicion'] = int(r['posicion']) if r['posicion'] is not None else 0
+            if r.get('poligono'):
+                try:
+                    if isinstance(r['poligono'], str):
+                        r['poligono'] = json.loads(r['poligono'])
+                    elif isinstance(r['poligono'], bytes):
+                        r['poligono'] = json.loads(r['poligono'].decode('utf-8'))
+                except:
+                    r['poligono'] = None
         return rows
 
     def obtener_coordenadas(self, finca_id, persona_id, fecha):
@@ -186,6 +194,43 @@ class AgenteComparativa:
             rows = []
         conn.close()
         return rows
+
+    def obtener_puntos_labores(self, finca_id, persona_id, fecha, version='v545'):
+        if version == 'v715':
+            tablas = ['l_pal_polins']
+        else:
+            tablas = ['l_pal_artils', 'l_pal_artlis', 'l_pal_asisms', 'l_pal_antess', 'l_pal_artifs']
+            
+        conn = self.get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        puntos = []
+        for t in tablas:
+            query = f"""
+                SELECT l.lat, l.lng, l.fecha, 
+                       l.tipo_labor_id, tl.nombre as labor_nombre
+                FROM {t} l
+                LEFT JOIN tipo_labors tl ON l.tipo_labor_id = tl.tipo_labor_id
+                WHERE l.finca_id = %s AND l.persona_id = %s AND l.fecha BETWEEN %s AND %s
+            """
+            try:
+                cursor.execute(query, (finca_id, persona_id, f"{fecha} 00:00:00", f"{fecha} 23:59:59"))
+                rows = cursor.fetchall()
+                for r in rows:
+                    if r['lat'] is not None and r['lng'] is not None:
+                        r['lat'] = float(r['lat'])
+                        r['lng'] = float(r['lng'])
+                        if isinstance(r['fecha'], datetime):
+                            r['fecha'] = r['fecha'].strftime('%Y-%m-%d %H:%M:%S')
+                        else:
+                            r['fecha'] = str(r['fecha']) if r['fecha'] else ""
+                        r['labor_nombre'] = r['labor_nombre'] if r['labor_nombre'] else f"Tipo {r['tipo_labor_id']}"
+                        puntos.append(r)
+            except Exception as e:
+                pass
+                
+        conn.close()
+        return puntos
 
     def obtener_config_finca(self, finca_id):
         conn = self.get_db_connection()
@@ -554,6 +599,10 @@ def spots(finca_id):
     persona_id = request.args.get('persona_id', type=int)
     fecha = request.args.get('fecha')
     return jsonify(agente.obtener_spots_filtrados(finca_id, persona_id, fecha))
+
+@app.route('/puntos_labores/<int:finca_id>/<int:persona_id>/<fecha>')
+def puntos_labores(finca_id, persona_id, fecha):
+    return jsonify(agente.obtener_puntos_labores(finca_id, persona_id, fecha, version='v545'))
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
