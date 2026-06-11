@@ -157,15 +157,16 @@ class AgenteComparativa:
                 conn.close()
                 return []
             lote_ids_str = ",".join([str(lid) for lid in lote_ids])
-            cursor.execute(f"SELECT linea, lat, lng FROM spots WHERE finca_id = %s AND lote_id IN ({lote_ids_str})", (finca_id,))
+            cursor.execute(f"SELECT lote_id, linea, lat, lng, posicion FROM spots WHERE finca_id = %s AND lote_id IN ({lote_ids_str}) ORDER BY lote_id, linea, posicion", (finca_id,))
         else:
-            cursor.execute("SELECT linea, lat, lng FROM spots WHERE finca_id = %s", (finca_id,))
+            cursor.execute("SELECT lote_id, linea, lat, lng, posicion FROM spots WHERE finca_id = %s ORDER BY lote_id, linea, posicion", (finca_id,))
             
         rows = cursor.fetchall()
         conn.close()
         for r in rows:
             r['lat'] = float(r['lat'])
             r['lng'] = float(r['lng'])
+            r['posicion'] = int(r['posicion']) if r['posicion'] is not None else 0
         return rows
 
     def obtener_coordenadas(self, finca_id, persona_id, fecha):

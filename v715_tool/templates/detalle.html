@@ -126,6 +126,7 @@
         <div style="font-size: 0.8rem;">
             <input type="checkbox" id="chk-lotes" checked onchange="toggleLotes(this.checked)"> Lotes (Polígonos)<br>
             <input type="checkbox" id="chk-spots" onchange="toggleSpots(this.checked)"> Spots (Líneas)<br>
+            <input type="checkbox" id="chk-spot-lines" onchange="toggleSpotLines(this.checked)"> Líneas por Fila<br>
         </div>
     </div>
 
@@ -135,10 +136,17 @@
         let polyline;
         let layerLotes = L.layerGroup();
         let layerSpots = L.layerGroup();
+        let layerSpotLines = L.layerGroup();
 
         const layers = {
-            street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
-            satellite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}')
+            street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 24,
+                maxNativeZoom: 19
+            }),
+            satellite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                maxZoom: 24,
+                maxNativeZoom: 20
+            })
         };
 
         const fincaId = "{{ finca_id }}";
@@ -146,7 +154,7 @@
         const fecha = "{{ fecha }}";
 
         function initMap() {
-            map = L.map('map').setView([2.0, -75.0], 15);
+            map = L.map('map', { maxZoom: 24 }).setView([2.0, -75.0], 15);
             layers.satellite.addTo(map);
             layerLotes.addTo(map);
             loadData();
@@ -155,6 +163,7 @@
 
         function toggleLotes(visible) { if (visible) layerLotes.addTo(map); else map.removeLayer(layerLotes); }
         function toggleSpots(visible) { if (visible) layerSpots.addTo(map); else map.removeLayer(layerSpots); }
+        function toggleSpotLines(visible) { if (visible) layerSpotLines.addTo(map); else map.removeLayer(layerSpotLines); }
 
         async function loadGeoData() {
             try {
@@ -169,12 +178,39 @@
 
                 const resS = await fetch(`/spots/${fincaId}?persona_id=${personaId}&fecha=${fecha}`);
                 const spots = await resS.json();
+                
+                // Agrupar spots por lote y línea
+                const groups = {};
                 spots.forEach(s => {
                     const spot = L.circleMarker([s.lat, s.lng], {
                         radius: 2, color: 'yellow', weight: 1, fillOpacity: 0.8
                     }).bindTooltip(`Línea: ${s.linea}`, { sticky: true });
                     layerSpots.addLayer(spot);
+
+                    // Agrupación para líneas por fila
+                    const key = `${s.lote_id}_${s.linea}`;
+                    if (!groups[key]) {
+                        groups[key] = [];
+                    }
+                    groups[key].push(s);
                 });
+
+                // Dibujar una línea por fila ordenada por posicion
+                for (const key in groups) {
+                    const groupSpots = groups[key];
+                    groupSpots.sort((a, b) => (a.posicion || 0) - (b.posicion || 0));
+                    
+                    const latlngs = groupSpots.map(s => [s.lat, s.lng]);
+                    if (latlngs.length >= 2) {
+                        const rowLine = L.polyline(latlngs, {
+                            color: '#38bdf8', // Light sky blue
+                            weight: 2,
+                            opacity: 0.7,
+                            dashArray: '5, 5'
+                        }).bindTooltip(`Fila: ${groupSpots[0].linea}`, { sticky: true });
+                        layerSpotLines.addLayer(rowLine);
+                    }
+                }
             } catch (e) { console.error("Error geo-data:", e); }
         }
 
