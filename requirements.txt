@@ -1,0 +1,6 @@
+mysql-connector-python
+python-dotenv
+pandas
+flask
+flask-cors
+tabulate

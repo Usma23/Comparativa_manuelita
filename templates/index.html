@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparativa SIOMA: v_545 vs Mapa</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 1.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #0f172a;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            margin-top: 0;
+            font-size: 1.8rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            background: #f1f5f9;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #475569;
+            text-transform: uppercase;
+        }
+
+        input, select {
+            padding: 0.7rem;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border 0.2s;
+            background: white;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .filtros-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1.5rem;
+            background: #f1f5f9;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            align-self: end;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px var(--primary);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 70vh;
+            margin-top: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: #f8fafc;
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-weight: 700;
+            color: #64748b;
+            box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover {
+            background: #f1f5f9;
+            cursor: pointer;
+        }
+
+        .badge {
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .estado-ok {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .estado-disc {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .estado-solo {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .estado-pocos {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            font-style: italic;
+            background: #eff6ff;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .tip {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📊 Comparativa de Líneas SIOMA</h1>
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="finca_id">ID de Finca</label>
+                <input type="number" id="finca_id" value="31">
+            </div>
+            <div class="form-group">
+                <label for="desde">Desde</label>
+                <input type="date" id="desde">
+            </div>
+            <div class="form-group">
+                <label for="hasta">Hasta</label>
+                <input type="date" id="hasta">
+            </div>
+            <button onclick="realizarComparativa()">Consultar Datos</button>
+            <button onclick="descargarReporte()" style="background: #059669; margin-left:10px;">Descargar Informe
+                (.csv)</button>
+        </div>
+
+        <script>
+            // Establecer fecha actual por defecto
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('desde').value = hoy;
+            document.getElementById('hasta').value = hoy;
+
+            // Recuperar el último finca_id guardado
+            const lastFincaId = localStorage.getItem('last_finca_id');
+            if (lastFincaId) {
+                document.getElementById('finca_id').value = lastFincaId;
+            }
+        </script>
+
+        <div id="loading" class="loading">🔍 Consultando base de datos y cruzando información...</div>
+
+        <div id="resultados-listado" style="display: none;">
+            <div class="tip">💡 Haz clic en cualquier operario para abrir el <b>Mapa Detallado</b> en una nueva ventana.
+            </div>
+
+            <!-- Información de Finca y Configuración Activa -->
+            <div id="finca-config-panel" style="display: none; background: #eff6ff; border: 1.5px solid #bfdbfe; color: #1e3a8a; padding: 1rem; border-radius: 10px; margin-top: 1rem; margin-bottom: 1rem; font-size: 0.95rem;">
+                🌲 Finca: <b id="config-finca-nombre">-</b> | 
+                📊 Cumplimiento Mínimo: <b id="config-cumplimiento">-</b>% | 
+                🔀 Salto Permitido: <b id="config-salto">-</b> líneas
+            </div>
+
+            <!-- Panel de Filtros y Búsqueda -->
+            <div class="filtros-panel">
+                <div class="form-group">
+                    <label for="filtro_busqueda">Buscar (Nombre, Código o Lote)</label>
+                    <input type="text" id="filtro_busqueda" placeholder="Ej: Arulfo, 204475, 452-3..." oninput="filtrarYMostrarDatos()">
+                </div>
+                <div class="form-group">
+                    <label for="filtro_estado">Filtrar por Estado</label>
+                    <select id="filtro_estado" onchange="filtrarYMostrarDatos()">
+                        <option value="todos">Todos los estados</option>
+                        <option value="OK">OK</option>
+                        <option value="DISCREPANCIA">DISCREPANCIA</option>
+                        <option value="Solo en Mapa">Solo en Mapa</option>
+                        <option value="Solo en Analisis">Solo en Análisis</option>
+                        <option value="Menos de 5 líneas">Menos de 5 líneas</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="tabla-resultados">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Operario</th>
+                            <th>Lote</th>
+                            <th>Labor</th>
+                            <th>Analisis(LI-LF)</th>
+                            <th>Mapa (LI-LF)</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultados-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variable global para almacenar los datos de la última consulta
+        window.datosComparativa = [];
+
+        async function descargarReporte() {
+            const finca_id = document.getElementById('finca_id').value;
+            const desde = document.getElementById('desde').value;
+            const hasta = document.getElementById('hasta').value;
+
+            if (!finca_id || !desde || !hasta) { alert('Completa todos los campos.'); return; }
+
+            const btn = document.querySelector('button[onclick="descargarReporte()"]');
+            const originalText = btn.innerText;
+            btn.innerText = '⏳ Procesando...';
+            btn.disabled = true;
+
+            try {
+                // Si ya tenemos los datos en memoria, los usamos; si no, los consultamos
+                let data = window.datosComparativa;
+                if (!data || data.length === 0) {
+                    const response = await fetch('/comparar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ finca_id, desde, hasta })
+                    });
+                    if (!response.ok) throw new Error('Error al obtener datos');
+                    const result = await response.json();
+                    data = result.registros;
+                }
+
+                // Filtrar según el estado actual de los filtros de la interfaz
+                const busqueda = document.getElementById('filtro_busqueda') ? document.getElementById('filtro_busqueda').value.toLowerCase().trim() : '';
+                const estado = document.getElementById('filtro_estado') ? document.getElementById('filtro_estado').value : 'todos';
+
+                let dataToExport = data;
+                
+                // Si hay algún filtro activo, exportamos lo que se muestra.
+                // Si no hay filtros activos, por defecto exportamos sólo las discrepancias/no-OK.
+                if (busqueda || estado !== 'todos') {
+                    dataToExport = data.filter(item => {
+                        if (estado !== 'todos' && item.estado !== estado) return false;
+                        if (busqueda) {
+                            const nombre = (item.PERSONA || '').toLowerCase();
+                            const codigo = String(item.FUNC || '').toLowerCase();
+                            const lote = (item.LOTE || '').toLowerCase();
+                            if (!nombre.includes(busqueda) && !codigo.includes(busqueda) && !lote.includes(busqueda)) return false;
+                        }
+                        return true;
+                    });
+                } else {
+                    dataToExport = data.filter(r => r.estado !== 'OK');
+                }
+
+                if (dataToExport.length === 0) {
+                    alert('No hay registros que coincidan con los filtros aplicados para reportar.');
+                    return;
+                }
+
+                // Generar CSV manualmente en el cliente
+                const headers = ['Fecha', 'Operario', 'Codigo', 'Lote', 'Labor', 'Analisis_I', 'Analisis_F', 'Mapa_I', 'Mapa_F', 'Estado'];
+                let csvRows = [headers.join(';')];
+
+                for (const r of dataToExport) {
+                    const v_i = r.v545_linea_i !== undefined ? r.v545_linea_i : r.v715_linea_i;
+                    const v_f = r.v545_linea_f !== undefined ? r.v545_linea_f : r.v715_linea_f;
+                    const row = [
+                        r.fecha, r.PERSONA, r.FUNC, r.LOTE, r.labor_nombre,
+                        v_i, v_f, r.mapa_linea_i, r.mapa_linea_f,
+                        r.estado
+                    ];
+                    csvRows.push(row.map(v => `"${v === '-' || v === null || v === undefined ? '' : v}"`).join(';'));
+                }
+
+                const csvString = csvRows.join('\n');
+                // IMPORTANTE: Inyectar BOM para que Excel detecte UTF-8
+                const blob = new Blob(['\ufeff' + csvString], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `Reporte_Comparativa_Finca${finca_id}_${desde}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+            } catch (e) {
+                console.error(e);
+                alert('Ocurrió un error al generar el reporte.');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function realizarComparativa() {
+            const finca_id = document.getElementById('finca_id').value;
+            const desde = document.getElementById('desde').value;
+            const hasta = document.getElementById('hasta').value;
+
+            // Guardar para la próxima vez
+            localStorage.setItem('last_finca_id', finca_id);
+
+            const loading = document.getElementById('loading');
+            const listado = document.getElementById('resultados-listado');
+
+            if (!finca_id || !desde || !hasta) { alert('Completa todos los campos.'); return; }
+
+            loading.style.display = 'block';
+            listado.style.display = 'none';
+
+            // Limpiar filtros al hacer nueva consulta
+            if (document.getElementById('filtro_busqueda')) document.getElementById('filtro_busqueda').value = '';
+            if (document.getElementById('filtro_estado')) document.getElementById('filtro_estado').value = 'todos';
+
+            try {
+                const response = await fetch('/comparar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ finca_id, desde, hasta })
+                });
+                const result = await response.json();
+
+                if (result.error) { alert(result.error); return; }
+
+                window.datosComparativa = result.registros;
+
+                // Mostrar configuración de la finca
+                if (result.config) {
+                    document.getElementById('config-finca-nombre').innerText = result.config.nombre;
+                    document.getElementById('config-cumplimiento').innerText = result.config.cumplimiento;
+                    document.getElementById('config-salto').innerText = result.config.salto;
+                    document.getElementById('finca-config-panel').style.display = 'block';
+                } else {
+                    document.getElementById('finca-config-panel').style.display = 'none';
+                }
+
+                filtrarYMostrarDatos();
+                listado.style.display = 'block';
+            } catch (e) { console.error(e); alert('Error al procesar datos.'); }
+            finally { loading.style.display = 'none'; }
+        }
+
+        function filtrarYMostrarDatos() {
+            const busqueda = document.getElementById('filtro_busqueda').value.toLowerCase().trim();
+            const estado = document.getElementById('filtro_estado').value;
+            const tbody = document.getElementById('resultados-body');
+            const finca_id = document.getElementById('finca_id').value;
+            
+            tbody.innerHTML = '';
+
+            if (!window.datosComparativa) return;
+
+            const datosFiltrados = window.datosComparativa.filter(item => {
+                // Filtro de Estado
+                if (estado !== 'todos') {
+                    // Mapeo especial para tratar 'Solo en Analisis' con acento o sin acento
+                    if (estado === 'Solo en Analisis') {
+                        if (item.estado !== 'Solo en Analisis' && item.estado !== 'Solo en Análisis') return false;
+                    } else if (item.estado !== estado) {
+                        return false;
+                    }
+                }
+
+                // Filtro de Búsqueda (Nombre, Código o Lote)
+                if (busqueda) {
+                    const nombre = (item.PERSONA || '').toLowerCase();
+                    const codigo = String(item.FUNC || '').toLowerCase();
+                    const lote = (item.LOTE || '').toLowerCase();
+
+                    if (!nombre.includes(busqueda) && !codigo.includes(busqueda) && !lote.includes(busqueda)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            datosFiltrados.forEach(item => {
+                const row = document.createElement('tr');
+                let badgeClass = 'estado-ok';
+                if (item.estado === 'DISCREPANCIA') badgeClass = 'estado-disc';
+                else if (item.estado === 'Menos de 5 líneas') badgeClass = 'estado-pocos';
+                else if (item.estado !== 'OK') badgeClass = 'estado-solo';
+
+                // Handler para abrir nueva ventana
+                row.onclick = () => {
+                    const url = `/detalle/${finca_id}/${item.persona_id}/${item.fecha}`;
+                    window.open(url, `Detalle_${item.persona_id}_${item.fecha}`, 'width=1200,height=800');
+                };
+
+                const v_i = item.v545_linea_i !== undefined ? item.v545_linea_i : item.v715_linea_i;
+                const v_f = item.v545_linea_f !== undefined ? item.v545_linea_f : item.v715_linea_f;
+
+                row.innerHTML = `
+                    <td>${item.fecha}</td>
+                    <td><b>${item.PERSONA}</b><br><small>${item.FUNC}</small></td>
+                    <td>${item.LOTE}</td>
+                    <td title="ID: ${item.labor_id}">${item.labor_nombre}</td>
+                    <td>${v_i} - ${v_f}</td>
+                    <td>${item.mapa_linea_i} - ${item.mapa_linea_f}</td>
+                    <td><span class="badge ${badgeClass}">${item.estado}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+    </script>
+</body>
+
+</html>

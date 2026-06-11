@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle Recorrido: {{ nombre }}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background: #1e293b;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+
+        .info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .info h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .info span {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .stats {
+            display: flex;
+            gap: 2rem;
+            background: #1e293b;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        #map {
+            flex: 1;
+            z-index: 1;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(30, 41, 59, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+
+        .btn-close {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .lote-label {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            font-weight: bold;
+            font-size: 0.75rem;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="info">
+            <h1>{{ nombre }} ({{ codigo }})</h1>
+            <span>Fecha: {{ fecha }} | Finca ID: {{ finca_id }}</span>
+        </div>
+        <div class="stats" id="stats-panel">
+            <div>📏 <span id="distancia">-</span> km</div>
+            <div>⏱️ <span id="puntos">0</span> puntos</div>
+        </div>
+        <button class="btn-close" onclick="window.close()">Cerrar Ventana</button>
+    </header>
+
+    <div id="map"></div>
+
+    <div class="controls">
+        <label style="font-size: 0.8rem; display: block; margin-bottom: 5px;">Capa Base:</label>
+        <select id="map-select" onchange="changeLayer(this.value)"
+            style="padding: 5px; border-radius: 4px; width: 100%; margin-bottom: 10px;">
+            <option value="satellite">Satélite (Híbrido)</option>
+            <option value="street">Calles</option>
+        </select>
+
+        <label style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px; display: block;">Elementos
+            Finca:</label>
+        <div style="font-size: 0.8rem;">
+            <input type="checkbox" id="chk-lotes" checked onchange="toggleLotes(this.checked)"> Lotes (Polígonos)<br>
+            <input type="checkbox" id="chk-spots" onchange="toggleSpots(this.checked)"> Spots (Líneas)<br>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let polyline;
+        let layerLotes = L.layerGroup();
+        let layerSpots = L.layerGroup();
+
+        const layers = {
+            street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+            satellite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}')
+        };
+
+        const fincaId = "{{ finca_id }}";
+        const personaId = "{{ persona_id }}";
+        const fecha = "{{ fecha }}";
+
+        function initMap() {
+            map = L.map('map').setView([2.0, -75.0], 15);
+            layers.satellite.addTo(map);
+            layerLotes.addTo(map);
+            loadData();
+            loadGeoData();
+        }
+
+        function toggleLotes(visible) { if (visible) layerLotes.addTo(map); else map.removeLayer(layerLotes); }
+        function toggleSpots(visible) { if (visible) layerSpots.addTo(map); else map.removeLayer(layerSpots); }
+
+        async function loadGeoData() {
+            try {
+                const resL = await fetch(`/poligonos/${fincaId}`);
+                const poligonos = await resL.json();
+                poligonos.forEach(p => {
+                    const poly = L.polygon(p.puntos, {
+                        color: 'white', weight: 1.5, fillColor: '#22c55e', fillOpacity: 0.1
+                    }).bindTooltip(p.nombre, { permanent: true, direction: 'center', className: 'lote-label' });
+                    layerLotes.addLayer(poly);
+                });
+
+                const resS = await fetch(`/spots/${fincaId}`);
+                const spots = await resS.json();
+                spots.forEach(s => {
+                    const spot = L.circleMarker([s.lat, s.lng], {
+                        radius: 2, color: 'yellow', weight: 1, fillOpacity: 0.8
+                    }).bindTooltip(`Línea: ${s.linea}`, { sticky: true });
+                    layerSpots.addLayer(spot);
+                });
+            } catch (e) { console.error("Error geo-data:", e); }
+        }
+
+        function changeLayer(type) {
+            layers.street.remove();
+            layers.satellite.remove();
+            layers[type].addTo(map);
+        }
+
+        async function loadData() {
+            try {
+                const response = await fetch('/coordenadas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ finca_id: fincaId, persona_id: personaId, fecha: fecha })
+                });
+                const data = await response.json();
+
+                if (!data || data.length === 0) {
+                    alert("No hay coordenadas para este operario en esta fecha.");
+                    return;
+                }
+
+                document.getElementById('puntos').innerText = data.length;
+
+                const path = data.map(c => [c.latitud, c.longitud]);
+
+                // Calcular distancia aproximada
+                let dist = 0;
+                for (let i = 1; i < path.length; i++) {
+                    dist += map.distance(path[i - 1], path[i]);
+                }
+                document.getElementById('distancia').innerText = (dist / 1000).toFixed(2);
+
+                polyline = L.polyline(path, { color: '#f97316', weight: 6, opacity: 0.9 }).addTo(map);
+                polyline.bringToFront();
+
+                L.marker(path[0], { icon: createIcon('#22c55e') }).addTo(map).bindPopup("<b>Inicio:</b> " + data[0].fecha);
+                L.marker(path[path.length - 1], { icon: createIcon('#ef4444') }).addTo(map).bindPopup("<b>Fin:</b> " + data[data.length - 1].fecha);
+
+                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+
+            } catch (e) { console.error(e); }
+        }
+
+        function createIcon(color) {
+            return L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="background:${color}; width:16px; height:16px; border:3px solid white; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.5);"></div>`,
+                iconSize: [16, 16]
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initMap);
+    </script>
+</body>
+
+</html>

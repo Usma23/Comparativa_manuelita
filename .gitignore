@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+scratch/
+*.csv
+*.log
+arulfo_full.txt
+arulfo_out.txt
+missing_out.txt
+output.txt
+output_db.txt
+report_out.txt
